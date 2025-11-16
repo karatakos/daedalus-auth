@@ -4,7 +4,6 @@ import { mockClient } from 'aws-sdk-client-mock';
 import { SigninHandler, SigninCmd } from '../actions/commands/sign-in.command.js';
 import { AccessTokenHandler, AccessTokenQuery } from '../actions/queries/access-token.query.js';
 
-import { EventBus } from '../events/event-bus.js';
 import { UserSignedInEvent } from '../events/user-signed-in.event.js';
 import { UserSignInUnauthorizedEvent } from '../events/user-sign-in-unauthorized.event.js';
 
@@ -45,7 +44,7 @@ const publicKeysES256 = {
     }]
 }
 
-const adrianEnabledNotExpiredJWT = "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IjAwSktFWnN6cGJWbVNleDVxcHFGZU5zRVhVMHA5YVdHWi0wdTAxczlVVmMifQ.eyJ1c2VySWQiOiJlZTRlZDc5N2E0OTc0ZTEyOTlhZjRkNzZjNjdiZDcyZSIsInVzZXJuYW1lIjoiQWRyaWFuIiwicG9saWN5Ijp7ImNhcGFiaWxpdGllcyI6WyJhZG1pbiJdfSwic3RhdHVzIjoiRW5hYmxlZCIsImV4cCI6MTc0MDAzNjA4Nn0.2w3Psi7_PTBckcdTzNsq3pVbrMLBoqVlUNxrzwKDeIal1aExGvt2gBd3LgMR-Mvzp99vbzUeraFzUzB5AR4Kvg";
+const adrianEnabledNotExpiredJWT = "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IjAwSktFWnN6cGJWbVNleDVxcHFGZU5zRVhVMHA5YVdHWi0wdTAxczlVVmMifQ.eyJ1c2VySWQiOiJlZTRlZDc5N2E0OTc0ZTEyOTlhZjRkNzZjNjdiZDcyZSIsInVzZXJuYW1lIjoiQWRyaWFuIiwicG9saWN5Ijp7ImNhcGFiaWxpdGllcyI6WyJhZG1pbiJdfSwic3RhdHVzIjoiRW5hYmxlZCIsImV4cCI6MjIzNjYyMTU4MX0.hjJJPzsNzWijaqeRsSW6laIybNPJ5Z5oFkZ3exUh3m4PVGMngxTVOBCELFuqZLJ8GIR2Lxe2-w8lCa2ss8ISMA";
 const sarahEnabledExpiredJWT = "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IjAwSktFWnN6cGJWbVNleDVxcHFGZU5zRVhVMHA5YVdHWi0wdTAxczlVVmMifQ.eyJ1c2VySWQiOiI5NTNmY2NmN2EyNDM0NTgwOGIwM2U0ODY4M2VlNmEzYiIsInVzZXJuYW1lIjoiU2FyYWgiLCJwb2xpY3kiOnsiY2FwYWJpbGl0aWVzIjpbXX0sInN0YXR1cyI6IkVuYWJsZWQiLCJleHAiOjE3MDg1MDAwODZ9.WtnZQ3tP6ifc3jcG5rvrJA7AoSN6zyUjbfh0tGqu0vKa8P0Y0fUE7gNdGDMvN85slZxmlgEURyHKUQbaX1bemw";
 const timmyDisabledNotExpiredJWT = "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IjAwSktFWnN6cGJWbVNleDVxcHFGZU5zRVhVMHA5YVdHWi0wdTAxczlVVmMifQ.eyJ1c2VySWQiOiI5ZWQ3YWZhNWMwZDQ0YjgwYmIwYjVhODc1MzJhYzA4NCIsInVzZXJuYW1lIjoiVGltbXkiLCJwb2xpY3kiOnsiY2FwYWJpbGl0aWVzIjpbXX0sInN0YXR1cyI6IkRpc2FibGVkIiwiZXhwIjoxNzQwMDM2MDg2fQ.LXZpgkyl1ToncOmfv8dMoSO3bVubN9JfDpolNvJbNAhQcG-sBdAslgHYF8jNmmjB1XiOpgQkkA3NMKD4I7dm_g";
 
@@ -107,8 +106,6 @@ const ssm = new SSMClient();
 const userRepo = UserRepoFactory.make(mockedDatastore);
 
 const jwksCache = new JwksParameterStoreCache(ssm);
-const eventBus = new EventBus();
-
 let ssmMock: any;
 
 beforeEach(() => {
@@ -128,28 +125,28 @@ beforeEach(() => {
 describe('Refreshing access token', () => {
     it('Throw error invalid token', async () => {
         const refreshTokenQry = new AccessTokenHandler(userRepo, jwksCache);
-        await expect(refreshTokenQry.execute(new AccessTokenQuery("faketoken")))
+        await expect(refreshTokenQry.handle(new AccessTokenQuery("faketoken")))
             .rejects
             .toHaveProperty("message", "Unauthorized. Refresh token not found, please sign-in again.");
     });
     
     it('Throw error expired token', async () => {
         const refreshTokenQry = new AccessTokenHandler(userRepo, jwksCache);
-        await expect(refreshTokenQry.execute(new AccessTokenQuery(sarahEnabledExpiredJWT)))
+        await expect(refreshTokenQry.handle(new AccessTokenQuery(sarahEnabledExpiredJWT)))
             .rejects
             .toEqual("Token invalid.");
     });
 
     it('Throw error disabled user', async () => {
         const refreshTokenQry = new AccessTokenHandler(userRepo, jwksCache);
-        await expect(refreshTokenQry.execute(new AccessTokenQuery(timmyDisabledNotExpiredJWT)))
+        await expect(refreshTokenQry.handle(new AccessTokenQuery(timmyDisabledNotExpiredJWT)))
             .rejects
             .toHaveProperty("message", "Unauthorized. This account is disabled.");
     });
 
     it('Succeed for valid token', async () => {
         const refreshTokenQry = new AccessTokenHandler(userRepo, jwksCache);
-        const token = await refreshTokenQry.execute(new AccessTokenQuery(adrianEnabledNotExpiredJWT));
+        const token = await refreshTokenQry.handle(new AccessTokenQuery(adrianEnabledNotExpiredJWT));
 
         expect(token).toBeDefined();
     });
@@ -157,60 +154,49 @@ describe('Refreshing access token', () => {
 
 describe('Logging-in', () => {
     it('Generates new token for existing user', async () => {
-        const signinQuery = new SigninHandler(
+        const signinCmd = new SigninHandler(
             userRepo, 
-            eventBus,
             jwksCache);
-        await signinQuery.execute(
+
+        const event = await signinCmd.handle(
             new SigninCmd("KaratakosJP#1983", FederatedAccountType.STEAM, "0000", "0003"));
 
-        const event: UserSignedInEvent = eventBus.log.find((e) => {
-            if (e instanceof UserSignedInEvent) {
-                return e;
-            }
-        }) as UserSignedInEvent;
+        expect(event).toBeInstanceOf(UserSignedInEvent);
 
-        expect(event?.userId).toEqual("ee4ed797a4974e1299af4d76c67bd72e");
-        expect(event?.federatedAccountId).toEqual("KaratakosJP#1983");
-        expect(event?.accessToken).toBeDefined();
-        expect(event?.refreshToken).toBeDefined();
-        expect(event?.refreshToken).not.toEqual(adrianEnabledNotExpiredJWT);
+        if (event instanceof UserSignedInEvent) {
+            expect(event?.userId).toEqual("ee4ed797a4974e1299af4d76c67bd72e");
+            expect(event?.federatedAccountId).toEqual("KaratakosJP#1983");
+            expect(event?.accessToken).toBeDefined();
+            expect(event?.refreshToken).toBeDefined();
+            expect(event?.refreshToken).not.toEqual(adrianEnabledNotExpiredJWT);
+        }
     });
 
     it('Generates new user account', async () => {
         const signinQuery = new SigninHandler(
             userRepo, 
-            eventBus,
             jwksCache);
-        await signinQuery.execute(
+
+        const event = await signinQuery.handle(
             new SigninCmd("SomeNewSteamUseAccount", FederatedAccountType.STEAM, "0000", "0001"));
 
-        const event: UserSignedInEvent = eventBus.log.find((e) => {
-            if (e instanceof UserSignedInEvent) {
-                return e;
-            }
-        }) as UserSignedInEvent;
-
         expect(event).toBeInstanceOf(UserSignedInEvent);
-        expect(event?.userId).toBeDefined();
-        expect(event?.federatedAccountId).toBeDefined();
-        expect(event?.accessToken).toBeDefined();
-        expect(event?.refreshToken).toBeDefined();
+
+        if (event instanceof UserSignedInEvent) {
+            expect(event?.userId).toBeDefined();
+            expect(event?.federatedAccountId).toBeDefined();
+            expect(event?.accessToken).toBeDefined();
+            expect(event?.refreshToken).toBeDefined();   
+        }
     });
 
     it('Sign-in failed for disabled user', async () => {
         const signinQuery = new SigninHandler(
             userRepo, 
-            eventBus,
             jwksCache);
-        await signinQuery.execute(
+        
+        const event = await signinQuery.handle(
             new SigninCmd("LittleTimmy#1987", FederatedAccountType.STEAM, "0000", "0002"));
-
-        const event = eventBus.log.find((e) => {
-            if (e instanceof UserSignInUnauthorizedEvent) {
-                return e;
-            }
-        });
 
         expect(event).toBeInstanceOf(UserSignInUnauthorizedEvent);
     });

@@ -17,7 +17,7 @@ class AccessTokenHandler implements IQueryHandler<string> {
         private readonly repo: UserRepo,
         private readonly jwksCache: IJwksCache) {}
 
-    async execute(query: AccessTokenQuery): Promise<string> {
+    async handle(query: AccessTokenQuery): Promise<string> {
         // Check if a user account already exists
         // 
         const user = await this.repo.getUserForRefreshToken(query.refreshToken);
@@ -28,26 +28,17 @@ class AccessTokenHandler implements IQueryHandler<string> {
         if (user.userAccount.status === UserAccountStatus.DISABLED) 
             throw new Error("Unauthorized. This account is disabled.");
 
-        // Might be cleaner to util.promisify this
+        // Validating refresh token (sig, exp, etc.)
         // 
-        await new Promise((resolve, reject) => {
-            jwt.verify(
-                query.refreshToken, 
-                async (header, callback) => {
-                    if (!header.kid)
-                        reject("No kid found in token header so I don't know which key to use.");
-                    else {
-                        const key = await this.jwksCache.getVerificationKey(header.kid);
-                        callback(null, jwkToPem(key)) 
-                    }},
-                (error, decoded) => {
-                    if (error || !decoded)  
-                        reject("Token invalid.");
-                    
-                    resolve(decoded);
-                });
-            });
+        try {
+            const decoded = await this.validateToken(query.refreshToken);
 
+            console.log(`Validated refresh token (exp: ${new Date(decoded.exp as number)})`);
+        }
+        catch (e) {
+            throw e;
+        }
+    
         const key = await this.jwksCache.getSigningKey();
 
         const pem = jwkToPem(key, {private: true})
@@ -66,6 +57,26 @@ class AccessTokenHandler implements IQueryHandler<string> {
             signingOptions);
 
         return token;  
+    }
+
+    private validateToken(token: string): Promise<jwt.JwtPayload> {
+        return new Promise((resolve, reject) => {
+            jwt.verify(
+                token, 
+                async (header, callback) => {
+                    if (!header.kid)
+                        reject("No kid found in token header so I don't know which key to use.");
+                    else {
+                        const key = await this.jwksCache.getVerificationKey(header.kid);
+                        callback(null, jwkToPem(key)) 
+                    }},
+                (error, decoded) => {
+                    if (error || !decoded)  
+                        reject("Token invalid.");
+                    
+                    resolve(decoded as jwt.JwtPayload);
+                });
+            });
     }
 }
 

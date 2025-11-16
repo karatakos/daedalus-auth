@@ -3,7 +3,6 @@ import express, {Request, Response} from 'express';
 import { AccessTokenHandler, AccessTokenQuery } from '../../actions/queries/access-token.query.js';
 import { SigninHandler, SigninCmd } from '../../actions/commands/sign-in.command.js';
 
-import { EventBus } from '../../events/event-bus.js';
 import { UserSignedInEvent } from '../../events/user-signed-in.event.js';
 import { UserSignInUnauthorizedEvent } from '../../events/user-sign-in-unauthorized.event.js';
 
@@ -18,8 +17,7 @@ import { SSMClient } from '@aws-sdk/client-ssm';
 
 const router = express.Router();
 
-const userRepo = UserRepoFactory.make()
-const eventBus = new EventBus();
+const userRepo = UserRepoFactory.make();
 const jwksCache = new JwksParameterStoreCache(new SSMClient());
 
 router
@@ -45,8 +43,6 @@ router
 
                 return;
             }
-
-            
         
             // TODO: To fix this we need a solution to access a centralized
             // event bus instance like a queue that will allow the client to 
@@ -57,21 +53,17 @@ router
             // 
             const signin = new SigninHandler(
                 userRepo,
-                eventBus,
                 jwksCache);
 
             try {
                 // TODO: Do this asyncronously and expect the client to callback?
                 //
-                await signin.execute(
+                const event = await signin.handle(
                     new SigninCmd(
                         req.body.oauthAccountId,
                         req.body.oauthProvider,
                         req.body.oauthToken,
                         req.body.commandId));
-
-                const event = eventBus.log.find(event => 
-                    event.commandId === req.body.commandId);  
     
                 if (!event)
                     throw new Error("Unauthorized. Sign-in failed for unknown reason.");
@@ -142,7 +134,7 @@ router
                 userRepo,
                 jwksCache);
 
-            const accessToken = await refreshTokenHandler.execute(
+            const accessToken = await refreshTokenHandler.handle(
                 new AccessTokenQuery(refreshToken));
 
             res.cookie(
