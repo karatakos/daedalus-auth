@@ -13,7 +13,6 @@ import { UserSignedInEvent} from '../../events/user-signed-in.event.js';
 import { 
     UserSignInUnauthorizedEvent, 
     UserSignInUnauthorizedReason} from '../../events/user-sign-in-unauthorized.event.js';
-import { EventBus } from '../../events/event-bus.js';
 import { IJwksCache } from '../../util/jkws-paramstore-cache.js';
 import { Config } from '../../util/config.js';
 
@@ -28,13 +27,12 @@ class SigninCmd implements ICommand {
         public readonly commandId: string) {}
 }
 
-class SigninHandler implements ICommandHandler {
+class SigninHandler implements ICommandHandler<UserSignedInEvent | UserSignInUnauthorizedEvent> {
     constructor(
-        public readonly repository: UserRepo, 
-        public readonly publisher: EventBus,
+        public readonly repository: UserRepo,
         public readonly jwksCache: IJwksCache) {}
 
-    async execute(cmd: SigninCmd): Promise<void> {
+    async handle(cmd: SigninCmd): Promise<UserSignedInEvent | UserSignInUnauthorizedEvent> {
         // TODO: Validate the god damn Steam user token
 
         try {
@@ -46,15 +44,12 @@ class SigninHandler implements ICommandHandler {
           
             if (user) {
                 if (user.userAccount.status === UserAccountStatus.DISABLED) {
-                    this.publisher.publish(
-                        new UserSignInUnauthorizedEvent(
+                    return new UserSignInUnauthorizedEvent(
                             cmd.accountId, 
                             new Date().toJSON(), 
                             `User account ${user.userAccount.userId} has been disabled.`,
                             UserSignInUnauthorizedReason.ACCOUNT_DISABLED,
-                            cmd.commandId));
-
-                    return;
+                            cmd.commandId);
                 }
 
                 if (user.refreshToken) {
@@ -148,25 +143,23 @@ class SigninHandler implements ICommandHandler {
                 user.federatedAccount,
                 user.userAccount);
 
-            this.publisher.publish(
-                new UserSignedInEvent(
+            return new UserSignedInEvent(
                     cmd.accountId,
                     user.userAccount.userId,
                     new Date().toJSON(), 
                     user.refreshToken?.token,
                     user?.accessToken,
-                    cmd.commandId));
+                    cmd.commandId);
         }
         catch (e) {
             const error = e as Error;
 
-            this.publisher.publish(
-                new UserSignInUnauthorizedEvent(
+            return new UserSignInUnauthorizedEvent(
                     cmd.accountId, 
                     new Date().toJSON(), 
                     error.message,
                     UserSignInUnauthorizedReason.ERROR,
-                    cmd.commandId));
+                    cmd.commandId);
         }       
     }
 }
